@@ -104,7 +104,7 @@
       config = await response.json();
       
       if (config.examName) {
-        document.getElementById("examTitle").innerText = config.examName;
+        document.getElementById("examTitle").innerHTML = config.examName;
       }
     } catch (error) {
       console.error('讀取 subjects.json 失敗：', error);
