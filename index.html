@@ -246,27 +246,29 @@
   }
 
   function onSubjectChange(id) {
-    const val = document.getElementById(`subject_${id}`).value;
-    const details = document.getElementById(`details_${id}`);
-    const radios = document.querySelectorAll(`input[name="errorType_${id}"]`);
+  const val = document.getElementById(`subject_${id}`).value;
+  const details = document.getElementById(`details_${id}`);
+  const radios = document.querySelectorAll(`input[name="errorType_${id}"]`);
 
-    if (val === "ALL_CORRECT") {
-      details.classList.add("d-none");
-      radios.forEach(r => { r.removeAttribute("required"); r.checked = false; });
-      onTypeChange(id);
+  if (val === "ALL_CORRECT") {
+    details.classList.add("d-none");
+    radios.forEach(r => { r.removeAttribute("required"); r.checked = false; });
+    onTypeChange(id);
 
-      document.querySelectorAll('.report-block').forEach(b => {
-        if (b.id !== `block_${id}`) b.classList.add("d-none");
-      });
-      document.getElementById("actionButtons").classList.add("d-none");
-    } else {
-      details.classList.remove("d-none");
-      radios[0].setAttribute("required", "true");
-
-      document.querySelectorAll('.report-block').forEach(b => b.classList.remove("d-none"));
-      document.getElementById("actionButtons").classList.remove("d-none");
-    }
+    // 將其他所有卡片直接從畫面刪除
+    document.querySelectorAll('.report-block').forEach(b => {
+      if (b.id !== `block_${id}`) {
+        b.remove();
+      }
+    });
+    document.getElementById("actionButtons").classList.add("d-none");
+    renumberBlocks();
+  } else {
+    details.classList.remove("d-none");
+    radios[0].setAttribute("required", "true");
+    document.getElementById("actionButtons").classList.remove("d-none");
   }
+}
 
   function onTypeChange(id) {
     const selectedRadio = document.querySelector(`input[name="errorType_${id}"]:checked`);
