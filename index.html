@@ -15,6 +15,23 @@
     .report-block { background-color: #ffffff; border: 1.5px solid #dee2e6; border-radius: 8px; padding: 18px; position: relative; margin-bottom: 15px; }
     .report-block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .btn-remove-block { font-size: 0.85rem; padding: 2px 8px; }
+    
+    /* 調整所有輸入框的 placeholder 提示文字顏色與透明度 */
+    ::placeholder {
+      color: #a0aec0 !important; /* 可依需求調整顏色，例如 #999999 或 #aaa */
+      opacity: 0.7 !important;   /* 降低透明度讓顏色看起來更淺 */
+    }
+
+    /* 針對 Internet Explorer 10-11 的相容性設定（可選） */
+    :-ms-input-placeholder {
+      color: #a0aec0 !important;
+    }
+
+    /* 針對 Microsoft Edge 的相容性設定（可選） */
+    ::-ms-input-placeholder {
+      color: #a0aec0 !important;
+    }
+    
   </style>
 </head>
 <body>
@@ -195,7 +212,7 @@
             <label class="form-label fw-bold">回報樣態</label>
             <div class="form-check mb-1">
               <input class="form-check-input" type="radio" name="errorType_${id}" id="typeScore_${id}" value="score" onchange="onTypeChange(${id})">
-              <label class="form-check-label" for="typeScore_${id}">1. 直接回報應為幾分</label>
+              <label class="form-check-label" for="typeScore_${id}">1. 成績有誤（直接回報正確分數）</label>
             </div>
             <div class="form-check mb-1">
               <input class="form-check-input" type="radio" name="errorType_${id}" id="typeDoubt_${id}" value="doubt" onchange="onTypeChange(${id})">
@@ -203,7 +220,7 @@
             </div>
             <div class="form-check mb-1">
               <input class="form-check-input" type="radio" name="errorType_${id}" id="typeOther_${id}" value="other" onchange="onTypeChange(${id})">
-              <label class="form-check-label" for="typeOther_${id}">3. 其他樣態</label>
+              <label class="form-check-label" for="typeOther_${id}">3. 其他</label>
             </div>
           </div>
 
@@ -217,7 +234,7 @@
 
           <div class="mb-3 d-none" id="inputOtherGroup_${id}">
             <label class="form-label fw-bold">其他說明 (限 20 字以內)</label>
-            <input type="text" class="form-control" id="other_${id}" maxlength="20" placeholder="例如：答案卡劃錯/漏登成績" oninput="updateCharCount(${id})">
+            <input type="text" class="form-control" id="other_${id}" maxlength="20" placeholder="例如：漏登成績" oninput="updateCharCount(${id})">
             <div class="form-text text-end"><span id="charCount_${id}">0</span>/20 字</div>
           </div>
         </div>
