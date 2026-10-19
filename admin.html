@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教師管理後端 - 定期評量成績回報檢視</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body { background-color: #f4f6f9; font-family: "Microsoft JhengHei", sans-serif; }
+    .card-dashboard { border: none; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .table-container { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .badge-all-correct { background-color: #198754; }
+    .badge-error { background-color: #dc3545; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark mb-4">
+  <div class="container-fluid">
+    <span class="navbar-brand mb-0 h1">🏫 定期評量成績回報 - 教師管理後端</span>
+    <span class="navbar-text text-white" id="teacherInfo"></span>
+  </div>
+</nav>
+
+<div class="container-fluid px-4">
+  <!-- 步驟 1：老師 Google 登入區塊 -->
+  <div id="loginSection" class="text-center py-5">
+    <div class="card card-dashboard p-4 mx-auto" style="max-width: 450px;">
+      <h4 class="mb-3">教師權限驗證</h4>
+      <p class="text-muted small mb-4">請使用已授權的管理員 Google 帳號登入系統</p>
+      <div id="g_id_onload"
+           data-client_id="855596013059-7rf9kq6staqmuq4un1qadpudik299f66.apps.googleusercontent.com"
+           data-callback="handleTeacherLogin">
+      </div>
+      <div class="g_id_signin d-flex justify-content-center" data-type="standard"></div>
+      <div id="loginError" class="alert alert-danger mt-3 d-none" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- 步驟 2：管理主介面 -->
+  <div id="adminMainSection" class="d-none">
+    
+    <!-- 統計數據卡片 -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card card-dashboard p-3 bg-primary text-white">
+          <div class="text-white-50 small fw-bold">總回報紀錄筆數</div>
+          <div class="fs-2 fw-bold" id="statTotalReports">0</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-dashboard p-3 bg-warning text-dark">
+          <div class="text-muted small fw-bold">有疑義/需核對筆數</div>
+          <div class="fs-2 fw-bold" id="statErrorReports">0</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-dashboard p-3 bg-success text-white">
+          <div class="text-white-50 small fw-bold">確認無誤筆數</div>
+          <div class="fs-2 fw-bold" id="statCorrectReports">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 篩選與工具列 -->
+    <div class="table-container mb-4">
+      <div class="row g-3 align-items-center mb-3">
+        <!-- 年級篩選 -->
+        <div class="col-md-2">
+          <select class="form-select" id="filterGrade" onchange="applyFilters()">
+            <option value="">全部年級</option>
+            <option value="1">高一年級</option>
+            <option value="2">高二年級</option>
+            <option value="3">高三年級</option>
+          </select>
+        </div>
+
+        <!-- 科目篩選 -->
+        <div class="col-md-3">
+          <select class="form-select" id="filterSubject" onchange="applyFilters()">
+            <option value="">全部科目</option>
+          </select>
+        </div>
+
+        <!-- 關鍵字搜尋 -->
+        <div class="col-md-4">
+          <input type="text" class="form-control" id="filterKeyword" placeholder="搜尋姓名、學號或回報內容..." oninput="applyFilters()">
+        </div>
+
+        <!-- 匯出按鈕 -->
+        <div class="col-md-3 text-end">
+          <button class="btn btn-success fw-bold w-100" onclick="exportToCSV()">
+            📥 匯出 CSV 檔 (Excel)
+          </button>
+        </div>
+      </div>
+
+      <!-- 資料表格 -->
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>提交時間</th>
+              <th>年級/班級</th>
+              <th>座號</th>
+              <th>學號</th>
+              <th>姓名</th>
+              <th>回報科目</th>
+              <th>狀態/內容</th>
+              <th>校務信箱</th>
+            </tr>
+          </thead>
+          <tbody id="reportTableBody">
+            <!-- 動態插入資料列 -->
+          </tbody>
+        </table>
+      </div>
+      <div id="noDataAlert" class="text-center text-muted py-4 d-none">查無符合條件的回報紀錄</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 1. 授權的教師 Email 白名單
+  const teacherWhitelist = [
+    "may892@hn.thu.edu.tw",
+    "admintest@hn.thu.edu.tw"
+  ];
+
+  // 全域變數：儲存從 Firebase 抓取的真實資料
+  let rawDatabase = [];
+  let currentFilteredData = [];
+
+  function parseJwt(token) {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+  }
+
+  // 處理老師登入驗證
+  async function handleTeacherLogin(response) {
+    const payload = parseJwt(response.credential);
+    const teacherEmail = payload.email.toLowerCase();
+
+    // 驗證是否在白名單內 (或檢查是否包含 admin 關鍵字)
+    const isAuthorized = teacherWhitelist.some(t => t.toLowerCase() === teacherEmail) || teacherEmail.includes("admin");
+
+    if (isAuthorized) {
+      document.getElementById("loginSection").classList.add("d-none");
+      document.getElementById("adminMainSection").classList.remove("d-none");
+      document.getElementById("teacherInfo").innerText = `登入者：${payload.name} (${teacherEmail})`;
+      
+      // 讀取雲端真實資料
+      await initDashboard();
+    } else {
+      const err = document.getElementById("loginError");
+      err.innerText = `權限不足：信箱 ${teacherEmail} 不是授權的管理員帳號。`;
+      err.classList.remove("d-none");
+    }
+  }
+
+  // 初始化儀表板與雲端資料
+  async function initDashboard() {
+    if (window.fetchRealReports) {
+      rawDatabase = await window.fetchRealReports();
+    }
+    populateSubjectFilter();
+    applyFilters();
+  }
+
+  // 動態抓取所有現有科目建立下拉篩選
+  function populateSubjectFilter() {
+    const subjectSelect = document.getElementById("filterSubject");
+    const subjects = [...new Set(rawDatabase.map(d => d.subject))];
+    
+    subjectSelect.innerHTML = '<option value="">全部科目</option>';
+    subjects.forEach(sub => {
+      if (sub) {
+        const opt = document.createElement("option");
+        opt.value = sub;
+        opt.textContent = sub;
+        subjectSelect.appendChild(opt);
+      }
+    });
+  }
+
+  // 篩選邏輯
+  function applyFilters() {
+    const selectedGrade = document.getElementById("filterGrade").value;
+    const selectedSubject = document.getElementById("filterSubject").value;
+    const keyword = document.getElementById("filterKeyword").value.trim().toLowerCase();
+
+    currentFilteredData = rawDatabase.filter(item => {
+      const matchGrade = !selectedGrade || item.grade === selectedGrade;
+      const matchSubject = !selectedSubject || item.subject === selectedSubject;
+      const matchKeyword = !keyword || 
+        (item.name && item.name.toLowerCase().includes(keyword)) || 
+        (item.studentId && item.studentId.includes(keyword)) || 
+        (item.detail && item.detail.toLowerCase().includes(keyword)) ||
+        (item.className && item.className.toLowerCase().includes(keyword));
+
+      return matchGrade && matchSubject && matchKeyword;
+    });
+
+    renderTable(currentFilteredData);
+    updateStats(currentFilteredData);
+  }
+
+  // 更新數據統計
+  function updateStats(data) {
+    document.getElementById("statTotalReports").innerText = data.length;
+    const correctCount = data.filter(d => d.subject === "全科確認").length;
+    document.getElementById("statCorrectReports").innerText = correctCount;
+    document.getElementById("statErrorReports").innerText = data.length - correctCount;
+  }
+
+  // 渲染表格
+  function renderTable(data) {
+    const tbody = document.getElementById("reportTableBody");
+    const noData = document.getElementById("noDataAlert");
+    tbody.innerHTML = "";
+
+    if (data.length === 0) {
+      noData.classList.remove("d-none");
+      return;
+    }
+
+    noData.classList.add("d-none");
+
+    data.forEach(item => {
+      const isAllCorrect = item.subject === "全科確認";
+      const badgeClass = isAllCorrect ? "badge-all-correct" : "badge-error";
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="small text-muted">${item.timestamp || '--'}</td>
+        <td><span class="badge bg-secondary">${item.grade || ''}年級</span> ${item.className || ''}</td>
+        <td>${item.seatNo || ''} 號</td>
+        <td><code>${item.studentId || ''}</code></td>
+        <td class="fw-bold">${item.name || ''}</td>
+        <td><span class="badge ${badgeClass}">${item.subject || ''}</span></td>
+        <td>${item.detail || ''}</td>
+        <td class="small text-muted">${item.email || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 匯出 CSV 檔
+  function exportToCSV() {
+    if (currentFilteredData.length === 0) {
+      alert("目前沒有可供匯出的資料！");
+      return;
+    }
+
+    // 表頭
+    const headers = ["提交時間", "年級", "班級", "座號", "學號", "姓名", "校務信箱", "回報科目", "回報說明"];
+    
+    // 轉成 CSV 內容
+    const rows = currentFilteredData.map(item => [
+      `"${item.timestamp || ''}"`,
+      `"${item.grade || ''}"`,
+      `"${item.className || ''}"`,
+      `"${item.seatNo || ''}"`,
+      `"${item.studentId || ''}"`,
+      `"${item.name || ''}"`,
+      `"${item.email || ''}"`,
+      `"${item.subject || ''}"`,
+      `"${(item.detail || '').replace(/"/g, '""')}"`
+    ]);
+
+    // 加入 BOM 標頭防止 Excel 中文亂碼 (\uFEFF)
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+
+    // 建立下載連結
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `定期評量成績錯誤回報彙整表_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+</script>
+
+<!-- 引入 Firebase JS SDK (Module 模式) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Firebase 設定金鑰 (與 index.html 相同)
+  const firebaseConfig = {
+    apiKey: "AIzaSyDSdi6dTkx9NXa5P8SHRAX0M2MqgFJfWiE",
+    authDomain: "score-report-system.firebaseapp.com",
+    projectId: "score-report-system",
+    storageBucket: "score-report-system.firebasestorage.app",
+    messagingSenderId: "592436700937",
+    appId: "1:592436700937:web:0a9fb9a05ae576d0c5d5d8",
+    measurementId: "G-G4QV72EM7Z"
+  };
+
+  // 初始化 Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // 讀取真實資料函式
+  window.fetchRealReports = async function() {
+    try {
+      // 向 Firestore 查詢 reports 集合，並依建立時間從新到舊排序
+      const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const realData = [];
+      
+      querySnapshot.forEach((doc) => {
+        realData.push(doc.data());
+      });
+
+      console.log(`成功載入 ${realData.length} 筆真實回報資料。`);
+      return realData;
+    } catch (error) {
+      console.error("抓取 Firebase 雲端資料失敗：", error);
+      alert("無法載入雲端資料，請確認 Firebase 網路與安全規則設定。");
+      return [];
+    }
+  }
+</script>
+
+</body>
+</html>

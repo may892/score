@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第一次定期評量成績錯誤回報系統</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body { background-color: #f8f9fa; font-family: "Microsoft JhengHei", sans-serif; }
+    .card-custom { max-width: 720px; margin: 30px auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .student-info-bg { background-color: #eef2f7; border-radius: 8px; padding: 15px; }
+    .report-block { background-color: #ffffff; border: 1.5px solid #dee2e6; border-radius: 8px; padding: 18px; position: relative; margin-bottom: 15px; }
+    .report-block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .btn-remove-block { font-size: 0.85rem; padding: 2px 8px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card card-custom p-4 bg-white">
+    <h3 class="text-center text-primary mb-3" id="examTitle">定期評量成績回報</h3>
+    <hr>
+
+    <!-- 步驟 1：Google 登入區塊 -->
+    <div id="loginSection" class="text-center py-4">
+      <p class="text-muted">請使用學校 Google 校務信箱 (@hn.thu.edu.tw) 登入以進行回報</p>
+      <div id="g_id_onload"
+           data-client_id="855596013059-7rf9kq6staqmuq4un1qadpudik299f66.apps.googleusercontent.com"
+           data-callback="handleCredentialResponse">
+      </div>
+      <div class="g_id_signin d-flex justify-content-center" data-type="standard"></div>
+      <div id="loginError" class="alert alert-danger mt-3 d-none" role="alert"></div>
+    </div>
+
+    <!-- 步驟 2：學生資訊與多筆表單區塊 -->
+    <div id="formSection" class="d-none">
+      <!-- 學生基本資料 -->
+      <div class="student-info-bg mb-4">
+        <h6 class="text-secondary fw-bold mb-2">學生基本資料（系統驗證）</h6>
+        <div class="row g-2">
+          <div class="col-6"><strong>姓名：</strong><span id="stName">--</span></div>
+          <div class="col-6"><strong>學號：</strong><span id="stId">--</span></div>
+          <div class="col-6"><strong>班級：</strong><span id="stClass">--</span> (<span id="stGrade">--</span>年級)</div>
+          <div class="col-6"><strong>座號：</strong><span id="stSeat">--</span> 號</div>
+          <div class="col-12"><strong>信箱：</strong><span id="stEmail">--</span></div>
+        </div>
+      </div>
+
+      <!-- 主表單 -->
+      <form id="multiReportForm">
+        <div id="reportContainer">
+          <!-- 動態插入科目回報卡片 -->
+        </div>
+
+        <!-- 按鈕區 -->
+        <div class="d-flex justify-content-between align-items-center mb-4" id="actionButtons">
+          <button type="button" class="btn btn-outline-primary" onclick="addReportBlock()">＋ 新增回報科目</button>
+          <span class="text-muted small">最多可一次填寫多筆回報</span>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn btn-primary w-100 py-2 fs-5 fw-bold">一次送出所有回報內容</button>
+      </form>
+    </div>
+
+    <!-- 步驟 3：送出成功畫面 -->
+    <div id="successSection" class="text-center py-4 d-none">
+      <div class="alert alert-success" role="alert">
+        <h4 class="alert-heading" id="successTitle">回報成功！</h4>
+        <p id="successMessage">您的成績回報資料已成功儲存至雲端資料庫。</p>
+      </div>
+      <div id="summaryList" class="text-start bg-light p-3 rounded mb-3"></div>
+      <button class="btn btn-outline-secondary" onclick="location.reload()">重新登入 / 重新填寫</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 全域變數：儲存科目與學生白名單
+  let config = {
+    examName: "定期評量成績回報系統",
+    gradeSubjects: {}
+  };
+
+  let studentWhitelist = [];
+  let currentStudent = null;
+  let blockCount = 0;
+
+  // 網頁載入時同時載入 subjects.json 與 students.json
+  window.addEventListener('DOMContentLoaded', () => {
+    fetchSubjects();
+    fetchStudents();
+  });
+
+  // 動態讀取 subjects.json
+  async function fetchSubjects() {
+    try {
+      const response = await fetch('subjects.json');
+      if (!response.ok) {
+        throw new Error(`HTTP 錯誤：${response.status}`);
+      }
+      config = await response.json();
+      
+      if (config.examName) {
+        document.getElementById("examTitle").innerText = config.examName;
+      }
+    } catch (error) {
+      console.error('讀取 subjects.json 失敗：', error);
+      alert('警告：無法載入科目清單 (subjects.json)，請檢查檔案是否存在或格式是否正確。');
+    }
+  }
+
+  // 動態讀取 students.json
+  async function fetchStudents() {
+    try {
+      const response = await fetch('students.json');
+      if (!response.ok) {
+        throw new Error(`HTTP 錯誤：${response.status}`);
+      }
+      studentWhitelist = await response.json();
+      console.log(`學生白名單載入成功，共 ${studentWhitelist.length} 筆資料。`);
+    } catch (error) {
+      console.error('讀取 students.json 失敗：', error);
+      alert('警告：無法載入學生白名單 (students.json)，請檢查 JSON 格式（是否有末尾多餘的逗號）。');
+    }
+  }
+
+  function parseJwt(token) {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+  }
+
+  function handleCredentialResponse(response) {
+    const responsePayload = parseJwt(response.credential);
+    const userEmail = responsePayload.email;
+    
+    // 比對讀取進來的 studentWhitelist
+    const student = studentWhitelist.find(s => s.email.toLowerCase() === userEmail.toLowerCase());
+
+    if (student) {
+      currentStudent = student;
+      showForm(student);
+    } else {
+      const errDiv = document.getElementById("loginError");
+      errDiv.innerText = `登入失敗：信箱 ${userEmail} 不在本次評量回報的名單中。`;
+      errDiv.classList.remove("d-none");
+    }
+  }
+
+  function showForm(student) {
+    document.getElementById("loginSection").classList.add("d-none");
+    document.getElementById("formSection").classList.remove("d-none");
+
+    document.getElementById("stName").innerText = student.name;
+    document.getElementById("stId").innerText = student.studentId;
+    document.getElementById("stClass").innerText = student.className;
+    document.getElementById("stGrade").innerText = student.grade;
+    document.getElementById("stSeat").innerText = student.seatNo;
+    document.getElementById("stEmail").innerText = student.email;
+
+    // 預設建立 3 個回報區塊
+    for (let i = 0; i < 3; i++) {
+      addReportBlock();
+    }
+  }
+
+  function addReportBlock() {
+    blockCount++;
+    const id = blockCount;
+    
+    const subjects = (config.gradeSubjects && config.gradeSubjects[currentStudent.grade]) || [];
+    const optionsHTML = subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    const blockHTML = `
+      <div class="report-block" id="block_${id}">
+        <div class="report-block-header">
+          <span class="fw-bold text-primary">項目 <span class="block-num"></span></span>
+          <button type="button" class="btn btn-outline-danger btn-remove-block" onclick="removeReportBlock(${id})">移除此科</button>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold">回報科目</label>
+          <select class="form-select subject-select" id="subject_${id}" required onchange="onSubjectChange(${id})">
+            <option value="" selected disabled>-- 請選擇科目 --</option>
+            <option value="ALL_CORRECT" class="fw-bold text-success">✅ 全部科目皆正確（無需回報錯誤）</option>
+            ${optionsHTML}
+          </select>
+        </div>
+
+        <div id="details_${id}">
+          <div class="mb-3">
+            <label class="form-label fw-bold">回報樣態</label>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="radio" name="errorType_${id}" id="typeScore_${id}" value="score" onchange="onTypeChange(${id})">
+              <label class="form-check-label" for="typeScore_${id}">1. 直接回報應為幾分</label>
+            </div>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="radio" name="errorType_${id}" id="typeDoubt_${id}" value="doubt" onchange="onTypeChange(${id})">
+              <label class="form-check-label" for="typeDoubt_${id}">2. 成績有疑義（不確定分數）</label>
+            </div>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="radio" name="errorType_${id}" id="typeOther_${id}" value="other" onchange="onTypeChange(${id})">
+              <label class="form-check-label" for="typeOther_${id}">3. 其他樣態</label>
+            </div>
+          </div>
+
+          <div class="mb-3 d-none" id="inputScoreGroup_${id}">
+            <label class="form-label fw-bold">正確分數</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="score_${id}" min="0" max="100" placeholder="例如：85">
+              <span class="input-group-text">分</span>
+            </div>
+          </div>
+
+          <div class="mb-3 d-none" id="inputOtherGroup_${id}">
+            <label class="form-label fw-bold">其他說明 (限 20 字以內)</label>
+            <input type="text" class="form-control" id="other_${id}" maxlength="20" placeholder="例如：答案卡劃錯/漏登成績" oninput="updateCharCount(${id})">
+            <div class="form-text text-end"><span id="charCount_${id}">0</span>/20 字</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("reportContainer").insertAdjacentHTML('beforeend', blockHTML);
+    renumberBlocks();
+  }
+
+  function removeReportBlock(id) {
+    const block = document.getElementById(`block_${id}`);
+    if (block) {
+      block.remove();
+      renumberBlocks();
+    }
+  }
+
+  function renumberBlocks() {
+    const blocks = document.querySelectorAll('.report-block');
+    blocks.forEach((b, index) => {
+      b.querySelector('.block-num').innerText = index + 1;
+    });
+    const removeBtns = document.querySelectorAll('.btn-remove-block');
+    removeBtns.forEach(btn => btn.style.display = blocks.length === 1 ? 'none' : 'inline-block');
+  }
+
+  function onSubjectChange(id) {
+    const val = document.getElementById(`subject_${id}`).value;
+    const details = document.getElementById(`details_${id}`);
+    const radios = document.querySelectorAll(`input[name="errorType_${id}"]`);
+
+    if (val === "ALL_CORRECT") {
+      details.classList.add("d-none");
+      radios.forEach(r => { r.removeAttribute("required"); r.checked = false; });
+      onTypeChange(id);
+
+      document.querySelectorAll('.report-block').forEach(b => {
+        if (b.id !== `block_${id}`) b.classList.add("d-none");
+      });
+      document.getElementById("actionButtons").classList.add("d-none");
+    } else {
+      details.classList.remove("d-none");
+      radios[0].setAttribute("required", "true");
+
+      document.querySelectorAll('.report-block').forEach(b => b.classList.remove("d-none"));
+      document.getElementById("actionButtons").classList.remove("d-none");
+    }
+  }
+
+  function onTypeChange(id) {
+    const selectedRadio = document.querySelector(`input[name="errorType_${id}"]:checked`);
+    const scoreGroup = document.getElementById(`inputScoreGroup_${id}`);
+    const otherGroup = document.getElementById(`inputOtherGroup_${id}`);
+    const scoreInput = document.getElementById(`score_${id}`);
+    const otherInput = document.getElementById(`other_${id}`);
+
+    scoreGroup.classList.add("d-none");
+    otherGroup.classList.add("d-none");
+    scoreInput.removeAttribute("required");
+    otherInput.removeAttribute("required");
+
+    if (selectedRadio) {
+      if (selectedRadio.value === "score") {
+        scoreGroup.classList.remove("d-none");
+        scoreInput.setAttribute("required", "true");
+      } else if (selectedRadio.value === "other") {
+        otherGroup.classList.remove("d-none");
+        otherInput.setAttribute("required", "true");
+      }
+    }
+  }
+
+  function updateCharCount(id) {
+    const val = document.getElementById(`other_${id}`).value;
+    document.getElementById(`charCount_${id}`).innerText = val.length;
+  }
+
+  // 表單提交事件處理
+  document.getElementById("multiReportForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const submitBtn = document.getElementById("submitBtn");
+    submitBtn.disabled = true;
+    submitBtn.innerText = "正在寫入資料庫...";
+
+    const submittedItems = [];
+    const blocks = document.querySelectorAll('.report-block:not(.d-none)');
+
+    blocks.forEach(b => {
+      const id = b.id.replace('block_', '');
+      const subject = document.getElementById(`subject_${id}`).value;
+
+      if (!subject) return;
+
+      if (subject === "ALL_CORRECT") {
+        submittedItems.push({
+          subject: "全科確認",
+          detail: "全部科目成績皆正確無誤"
+        });
+      } else {
+        const errorType = document.querySelector(`input[name="errorType_${id}"]:checked`).value;
+        let detailStr = "";
+
+        if (errorType === "score") {
+          detailStr = `應為 ${document.getElementById(`score_${id}`).value} 分`;
+        } else if (errorType === "doubt") {
+          detailStr = "成績有疑義";
+        } else if (errorType === "other") {
+          detailStr = document.getElementById(`other_${id}`).value;
+        }
+
+        submittedItems.push({
+          subject: subject,
+          detail: detailStr
+        });
+      }
+    });
+
+    if (submittedItems.length === 0) {
+      alert("請至少選擇一項科目進行回報！");
+      submitBtn.disabled = false;
+      submitBtn.innerText = "一次送出所有回報內容";
+      return;
+    }
+
+    try {
+      // 呼叫 Firebase 寫入函式
+      await window.saveReportToFirebase(currentStudent, submittedItems);
+
+      // 切換至成功畫面
+      document.getElementById("formSection").classList.add("d-none");
+      document.getElementById("successSection").classList.remove("d-none");
+
+      const summaryDiv = document.getElementById("summaryList");
+      summaryDiv.innerHTML = `<h6 class="fw-bold mb-2">本次提交摘要：</h6>` + 
+        submittedItems.map((item, idx) => `<p class="mb-1">${idx + 1}. <strong>${item.subject}</strong>：${item.detail}</p>`).join('');
+
+    } catch (error) {
+      console.error("提交失敗：", error);
+      submitBtn.disabled = false;
+      submitBtn.innerText = "一次送出所有回報內容";
+    }
+  });
+</script>
+
+<!-- 引入 Firebase JS SDK (Module 模式) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Firebase 設定金鑰
+  const firebaseConfig = {
+    apiKey: "AIzaSyDSdi6dTkx9NXa5P8SHRAX0M2MqgFJfWiE",
+    authDomain: "score-report-system.firebaseapp.com",
+    projectId: "score-report-system",
+    storageBucket: "score-report-system.firebasestorage.app",
+    messagingSenderId: "592436700937",
+    appId: "1:592436700937:web:0a9fb9a05ae576d0c5d5d8",
+    measurementId: "G-G4QV72EM7Z"
+  };
+
+  // 初始化 Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // 註冊全域 window 函式供表單寫入呼叫
+  window.saveReportToFirebase = async function(student, reports) {
+    try {
+      for (const item of reports) {
+        await addDoc(collection(db, "reports"), {
+          timestamp: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
+          createdAt: new Date(),
+          grade: student.grade,
+          className: student.className,
+          seatNo: student.seatNo,
+          studentId: student.studentId,
+          name: student.name,
+          email: student.email,
+          subject: item.subject,
+          detail: item.detail
+        });
+      }
+      console.log("真實資料已成功寫入 Firebase Firestore！");
+    } catch (e) {
+      console.error("寫入資料庫失敗: ", e);
+      alert("儲存資料失敗，請確認網路連線或 Firebase Firestore 規則設定。");
+      throw e;
+    }
+  }
+</script>
+
+</body>
+</html>
