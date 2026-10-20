@@ -226,10 +226,8 @@
     document.getElementById("stSeat").innerText = student.seatNo;
     document.getElementById("stEmail").innerText = student.email;
 
-    // 預設建立 3 個回報區塊
-    for (let i = 0; i < 3; i++) {
-      addReportBlock();
-    }
+    // 預設只建立 1 個回報區塊（項目 1）
+    addReportBlock();
   }
 
   function addReportBlock() {
