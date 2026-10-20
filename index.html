@@ -41,6 +41,17 @@
     <h3 class="text-center text-primary mb-3" id="examTitle">定期評量成績回報</h3>
     <hr>
 
+    <!-- 步驟 0：系統非開放時間提示區塊 -->
+    <div id="closedSection" class="text-center py-4 d-none">
+      <div class="alert alert-warning py-4 mb-0" role="alert">
+        <h4 class="alert-heading fw-bold mb-3">⚠️ 系統目前未開放回報</h4>
+        <p class="fs-6 mb-2" id="closedMessage">本系統開放時間如下：</p>
+        <div class="fw-bold text-dark fs-5 my-2" id="timeRangeText">--</div>
+        <hr>
+        <p class="small text-muted mb-0">如需協助，請洽詢教務處設備組 / 註冊組。</p>
+      </div>
+    </div>
+
     <!-- 步驟 1：Google 登入區塊 -->
     <div id="loginSection" class="text-center py-4">
       <p class="text-muted">請使用學校 Google 校務信箱 (@hn.thu.edu.tw) 登入以進行回報</p>
@@ -111,7 +122,7 @@
     fetchStudents();
   });
 
-  // 動態讀取 subjects.json
+  // 動態讀取 subjects.json 並檢查系統開放時間
   async function fetchSubjects() {
     try {
       const response = await fetch('subjects.json');
@@ -123,10 +134,47 @@
       if (config.examName) {
         document.getElementById("examTitle").innerHTML = config.examName;
       }
+
+      // 判斷系統是否在開放時間內
+      const isOpen = checkSystemOpen(config.startTime, config.endTime);
+      if (!isOpen) {
+        document.getElementById("loginSection").classList.add("d-none");
+        document.getElementById("closedSection").classList.remove("d-none");
+      }
     } catch (error) {
       console.error('讀取 subjects.json 失敗：', error);
       alert('警告：無法載入科目清單 (subjects.json)，請檢查檔案是否存在或格式是否正確。');
     }
+  }
+
+  // 檢查系統開放時間邏輯
+  function checkSystemOpen(startStr, endStr) {
+    if (!startStr || !endStr) return true; // 未設定時間時預設保持開放
+
+    const now = new Date();
+    const startTime = new Date(startStr);
+    const endTime = new Date(endStr);
+
+    const formatTime = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const date = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${year}/${month}/${date} ${hours}:${minutes}`;
+    };
+
+    document.getElementById("timeRangeText").innerText = `${formatTime(startTime)} ～ ${formatTime(endTime)}`;
+
+    if (now < startTime) {
+      document.getElementById("closedMessage").innerText = "系統尚未到達開放填寫時間：";
+      return false;
+    } else if (now > endTime) {
+      document.getElementById("closedMessage").innerText = "本次成績校對回報填寫時間已結束：";
+      return false;
+    }
+
+    return true;
   }
 
   // 動態讀取 students.json
