@@ -13,6 +13,33 @@
     "className": "高一甲",
     "classCode": "1",
     "seatNo": "1",
+    "studentId": "510992",
+    "name": "莊欽淇",
+    "email": "comquat@hn.thu.edu.tw"
+  },
+  {
+    "grade": "1",
+    "className": "高一甲",
+    "classCode": "1",
+    "seatNo": "1",
+    "studentId": "510992",
+    "name": "王微",
+    "email": "wangwei@hn.thu.edu.tw"
+  },
+    {
+    "grade": "1",
+    "className": "高一甲",
+    "classCode": "1",
+    "seatNo": "1",
+    "studentId": "510992",
+    "name": "林志勳",
+    "email": "hsun@hn.thu.edu.tw"
+  },
+  {
+    "grade": "1",
+    "className": "高一甲",
+    "classCode": "1",
+    "seatNo": "1",
     "studentId": "510271",
     "name": "王宜芳",
     "email": "s510271@hn.thu.edu.tw"
